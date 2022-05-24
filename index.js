@@ -56,7 +56,7 @@ async function run() {
       }
     };
 
-    // load all parts
+    // load all Parts
     app.get("/parts", async (req, res) => {
       const parts = await partsCollection.find({}).toArray();
       res.send(parts);
