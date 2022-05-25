@@ -78,21 +78,15 @@ async function run() {
       res.send(result);
     });
 
-    // verifyAdmin
-    // app.get("/admin/:email", async (req, res) => {
-    //   const email = req.params.email;
-    //   const user = await userCollection.findOne({ email: email });
-    //   console.log(user);
-    //   const isAdmin = user.role === "admin";
-    //   res.send({ admin: isAdmin });
-    // });
-
-    app.put("/user/admin/:email", verifyAdmin, async (req, res) => {
+    app.put("/user/:email", async (req, res) => {
       const email = req.params.email;
+      const user = req.body;
       const filter = { email: email };
-      const updateDoc = { $set: { role: "admin" } };
-      const result = await userCollection.updateOne(filter, updateDoc);
-      res.send(result);
+      const options = { upsert: true };
+      const updateDoc = { $set: user };
+      const result = await userCollection.updateOne(filter, updateDoc, options);
+      const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN);
+      res.send({ result, token });
     });
 
     // load all reviews
@@ -115,13 +109,25 @@ async function run() {
       res.send(result);
     });
 
+    // all orders 
+    app.get('/allOrders', async(req, res) =>{
+      const orders = await ordersCollection.find({}).toArray()
+      res.send(orders)
+    })
+
     // get single user email
-    app.get("/orders", async (req, res) => {
+    app.get("/orders", verifyJWT, async (req, res) => {
       const email = req.query.email;
-      const query = { email: email };
-      const cursor =  ordersCollection.find(query);
-      const orders = await cursor.toArray();
-      res.send(orders);
+      const decodedEmail = req.decoded.email;
+      if (email === decodedEmail) {
+        const query = { email: email };
+        const cursor = await ordersCollection.find(query);
+        const orders = await cursor.toArray();
+        res.send(orders);
+      }
+      else{
+      return  res.status(403).send({ message: "Forbidden" });
+      }
     });
   } finally {
     // await client.close();
