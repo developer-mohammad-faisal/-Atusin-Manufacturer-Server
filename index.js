@@ -44,6 +44,7 @@ async function run() {
     const partsCollection = client.db("autusin-Parts").collection("parts");
     const reviewsCollection = client.db("autusin-Parts").collection("reviews");
     const userCollection = client.db("autusin-Parts").collection("users");
+    const ordersCollection = client.db("autusin-Parts").collection("orders");
 
     // verifyAdmin
     const verifyAdmin = async (req, res, next) => {
@@ -78,12 +79,13 @@ async function run() {
     });
 
     // verifyAdmin
-    app.get("/admin/:email", async (req, res) => {
-      const email = req.params.email;
-      const user = await userCollection.findOne({ email: email });
-      const isAdmin = user.role === "admin";
-      res.send({ admin: isAdmin });
-    });
+    // app.get("/admin/:email", async (req, res) => {
+    //   const email = req.params.email;
+    //   const user = await userCollection.findOne({ email: email });
+    //   console.log(user);
+    //   const isAdmin = user.role === "admin";
+    //   res.send({ admin: isAdmin });
+    // });
 
     app.put("/user/admin/:email", verifyAdmin, async (req, res) => {
       const email = req.params.email;
@@ -104,6 +106,22 @@ async function run() {
       const review = req.body;
       const result = await reviewsCollection.insertOne(review);
       res.send(result);
+    });
+
+    // user orders
+    app.post("/orders", async (req, res) => {
+      const orders = req.body;
+      const result = await ordersCollection.insertOne(orders);
+      res.send(result);
+    });
+
+    // get single user email
+    app.get("/orders", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const cursor =  ordersCollection.find(query);
+      const orders = await cursor.toArray();
+      res.send(orders);
     });
   } finally {
     // await client.close();
