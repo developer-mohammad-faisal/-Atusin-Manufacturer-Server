@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRETE_KEY);
 const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 
@@ -49,11 +50,13 @@ async function run() {
     // verifyAdmin
     const verifyAdmin = async (req, res, next) => {
       const request = req.decoded.email;
-      const requestAccount = await userCollection.findOne({ email: request });
+      const requestAccount = await userCollection.findOne({
+        email: request,
+      });
       if (requestAccount.role === "admin") {
         next();
       } else {
-        res.status(403).send({ message: "Forbidden" });
+        res.status(403).send({ message: "forbidden" });
       }
     };
 
@@ -109,11 +112,19 @@ async function run() {
       res.send(result);
     });
 
-    // all orders 
-    app.get('/allOrders', async(req, res) =>{
-      const orders = await ordersCollection.find({}).toArray()
-      res.send(orders)
-    })
+    // single payment order
+    app.get("/orders/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const orders = await ordersCollection.findOne(query);
+      res.send(orders);
+    });
+
+    // all orders
+    app.get("/allOrders", verifyJWT, async (req, res) => {
+      const orders = await ordersCollection.find({}).toArray();
+      res.send(orders);
+    });
 
     // get single user email
     app.get("/orders", verifyJWT, async (req, res) => {
@@ -124,10 +135,55 @@ async function run() {
         const cursor = await ordersCollection.find(query);
         const orders = await cursor.toArray();
         res.send(orders);
+      } else {
+        return res.status(403).send({ message: "Forbidden" });
       }
-      else{
-      return  res.status(403).send({ message: "Forbidden" });
-      }
+
+      // delete my orders
+      app.delete("/orders/:email", verifyJWT, async (req, res) => {
+        const email = req.params.email;
+        const filter = { email: email };
+        const result = await ordersCollection.deleteOne(filter);
+        res.send(result);
+      });
+
+      // get admin
+      app.get("/admin/:email", async (req, res) => {
+        const email = req.params.email;
+        const user = await userCollection.findOne({ email: email });
+        const isAdmin = user.role === "admin";
+        res.send({ admin: isAdmin });
+      });
+
+      // make admin
+      app.put(
+        "/all-orders/admin/:email",
+        verifyJWT,
+        verifyAdmin,
+        async (req, res) => {
+          const email = req.params.email;
+          console.log(email);
+          const filter = { email: email };
+          const updateDoc = { $set: { role: "admin" } };
+          const result = await userCollection.updateOne(filter, updateDoc);
+          res.send(result);
+        }
+      );
+
+      // payment
+      app.post("/create-payment-intent", async (req, res) => {
+        const service = req.body;
+        const price = service.totalPrice;
+        const amount = parseInt(price * 100);
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      });
     });
   } finally {
     // await client.close();
