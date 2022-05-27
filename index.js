@@ -46,6 +46,7 @@ async function run() {
     const reviewsCollection = client.db("autusin-Parts").collection("reviews");
     const userCollection = client.db("autusin-Parts").collection("users");
     const ordersCollection = client.db("autusin-Parts").collection("orders");
+    const paymentCollection = client.db("autusin-Parts").collection("payment");
 
     // verifyAdmin
     const verifyAdmin = async (req, res, next) => {
@@ -64,6 +65,14 @@ async function run() {
     app.get("/parts", async (req, res) => {
       const parts = await partsCollection.find({}).toArray();
       res.send(parts);
+    });
+
+    // delete one Parts
+    app.delete("/parts/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: ObjectId(id) };
+      const result = await partsCollection.deleteOne(filter);
+      res.send(result);
     });
 
     // load single parts
@@ -87,16 +96,15 @@ async function run() {
       res.send(result);
     });
 
-
     // verify admin
-      app.get('/admin/:email', async(req, res) => {
-        const email = req.params.email
-        const user = await userCollection.findOne({email: email})
-        const isAdmin = user.role === "admin";
-        res.send({admin: isAdmin})
-      })
+    app.get("/admin/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email: email });
+      const isAdmin = user.role === "admin";
+      res.send({ admin: isAdmin });
+    });
 
-  //  admin user email
+    //  admin user email
     app.put("/user/admin/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const requester = req.decoded.email;
@@ -173,8 +181,8 @@ async function run() {
       // payment
       app.post("/create-payment-intent", verifyJWT, async (req, res) => {
         const service = req.body;
-        const price = service.price;
-        const amount = parseInt(price * 100);
+        const price = service.totalPrice;
+        const amount = parseFloat(price * 100);
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amount,
           currency: "usd",
@@ -182,6 +190,18 @@ async function run() {
         });
         res.send({ clientSecret: paymentIntent.client_secret });
       });
+
+
+      // transaction id check
+      app.patch('/payment/:id', async(req, res) => {
+         const id = req.params.id
+         const payment = req.body
+         const filter = {_id: ObjectId(id)}
+         const updatedDoc = {$set: { paid: true, pending: true, transactionId: payment.transactionId} }
+         const result = await paymentCollection.insertOne(payment)
+         const updatePurchases = await ordersCollection.updateOne(filter, updatedDoc)
+         res.send(updatePurchases)
+      })
 
       // delete my orders
       app.delete("/orders/:email", verifyJWT, async (req, res) => {
@@ -191,7 +211,48 @@ async function run() {
         res.send(result);
       });
 
-      // payment
+      // update profile
+      app.put("/currentUser/:email", async (req, res) => {
+        const email = req.params.email;
+        const user = req.body;
+        const filter = { email: email };
+        const option = { upsert: true };
+        const updatedData = {
+          $set: user,
+        };
+        const result = await userCollection.updateOne(
+          filter,
+          updatedData,
+          option
+        );
+        res.send(result);
+      });
+
+      // update get profile
+      app.get("/currentUser", async (req, res) => {
+        const email = req.query.email;
+        const query = { email: email };
+        const result = await userCollection.findOne(query);
+        res.send(result);
+      });
+
+      // pending put
+      app.put('/pending/:id', verifyJWT, async (req, res) => {
+        const id = req.params.id
+        const filter = {_id: ObjectId(id)}
+        const updatedDoc = {$set: {pending: false}}
+        const result = await ordersCollection.updateOne(filter, updatedDoc)
+        res.send(result)
+      })
+
+      // delete order admin
+     app.delete('/orderDelete/:id', verifyJWT, async(req, res) => {
+       const id = req.params.id
+       const filter = {_id: ObjectId(id)}
+       const result = await ordersCollection.deleteOne(filter)
+       res.send(result)
+     })
+      
     });
   } finally {
     // await client.close();
